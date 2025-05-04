@@ -7,7 +7,29 @@ It is intended for use with the Arduino Zero.
 
 The DSHOT documentation can be found at: https://betaflight.com/docs/development/api/dshot
 
-Without an external quartz, as often found on clone boards, the clock is too unstable for DSHOT 600 mode or anything faster, so DSHOT 300 is the recommended mode.
+Without an external quartz the clock is too unstable for DSHOT 600 or anything faster, so DSHOT 300 is the recommended mode.
+
+## Pinout
+| Motor Nr.  | SAMD21 Package pin | Arduino Zero pin  | 
+| -- | -- | -- |
+| 1 | PA08 | 4 (2 on clones) |
+| 2 | PA09 | 3 |
+| 3 | PA20 | 6 |
+| 4 | PA21 | 7 |
+
+## Install
+The library is intended to be used with PlatformIO, just add this repo to your lib_deps and let PlatformIO do the work.
+```
+[env:zeroUSB]
+;build_flags = 
+;	-DCRYSTALLESS
+platform = atmelsam
+board = zeroUSB
+framework = arduino
+...
+lib_deps = https://github.com/kq98/samd21-dshot.git
+...
+```
 
 ## Example
 
@@ -16,24 +38,17 @@ Without an external quartz, as often found on clone boards, the clock is too uns
 
 #include "samd21_dshot.h"
 
-DSHOTSetpoint setpoints;
+DSHOT::Setpoint setpoints;
 
 void setup() {
 
   // Select protocol speed 150, 300, 600, 1200 kbit/s
-  DSHOTInit(DSHOT300);
-
-  delay(100);
-
-  // Send commands to set LEDs, motor direction etc.
-  // Only possible when the drone is disarmed
-  sendDSHOTCommand(2, dshot_frame[0])
-  sendDSHOTCommand(1, dshot_frame[0])
+  DSHOT::Init(DSHOT::DSHOT300);
 
   delay(300);
 
   // Arm the drone, throttle values will be accepted afterwards
-  DSHOTArmDrone();
+  DSHOT::ArmDrone();
 
 }
 
@@ -50,7 +65,7 @@ void loop() {
   setpoints.motor3 = val_for_m3;
   setpoints.motor4 = val_for_m4;
 
-  DSHOTWrite(&setpoints);
+  DSHOT::Write(&setpoints);
 
 }
 ```
