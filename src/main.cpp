@@ -113,6 +113,8 @@ void myAnalogWrite(int pin, int value, uint8_t group, uint8_t channel) {
 }
 
 void enable_dma_channels() {
+  DMAC->CTRL.reg &= ~DMAC_CTRL_DMAENABLE;
+
   DMAC->CHID.reg = 0; // select channel 0
   DMAC->CHCTRLA.reg |= DMAC_CHCTRLA_ENABLE;
 
@@ -124,6 +126,8 @@ void enable_dma_channels() {
 
   DMAC->CHID.reg = 3; // select channel 0
   DMAC->CHCTRLA.reg |= DMAC_CHCTRLA_ENABLE;
+
+  DMAC->CTRL.reg |= DMAC_CTRL_DMAENABLE;
 }
 
 void disable_dma_channels() {
@@ -196,11 +200,11 @@ void setupDMA() {
   //   DMAC->CHINTENSET.reg = DMAC_CHINTENSET_TCMPL;
   // }
 
-  DMAC->CHID.reg = 3;
-  DMAC->CHINTENSET.reg = DMAC_CHINTENSET_TCMPL;
-  NVIC_EnableIRQ(DMAC_IRQn);
+  // DMAC->CHID.reg = 3;
+  // DMAC->CHINTENSET.reg = DMAC_CHINTENSET_TCMPL;
+  // NVIC_EnableIRQ(DMAC_IRQn);
 
-  enable_dma_channels();
+  // enable_dma_channels();
 
 }
 
@@ -269,7 +273,7 @@ void setup() {
 
   delay(100);
 
-  sendCommand(20, dshot_frame[0], 0, 6);
+  sendCommand(21, dshot_frame[0], 0, 6);
 
   delay(300);
   arm_drone();
@@ -327,15 +331,15 @@ void loop() {
   int x_read = analogRead(A5);
   int setpoint = constrain(round(2047/1023.0 * x_read), 48, 1047);
 
-  analogWrite(LED_BUILTIN, setpoint);
+  // analogWrite(LED_BUILTIN, setpoint);
 
-  // disable_dma_channels();
+
   writeDSHOTFrame(calcDSHOTFrame(setpoint), dshot_frame[0]);
   writeDSHOTFrame(calcDSHOTFrame(setpoint), dshot_frame[1]);
   writeDSHOTFrame(calcDSHOTFrame(setpoint), dshot_frame[2]);
   writeDSHOTFrame(calcDSHOTFrame(setpoint), dshot_frame[3]);
   enable_dma_channels();
 
-  delay(10);
+  // delay(1);
 
 }
