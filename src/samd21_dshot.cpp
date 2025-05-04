@@ -1,6 +1,9 @@
 
 #include "samd21_dshot.h"
 
+namespace DSHOT {
+namespace detail {
+
 static int _writeResolution = 8;
 
 bool DSHOT_READY = false;
@@ -247,7 +250,7 @@ void setupDMA() {
   enable_dma_channels();
 }
 
-uint16_t calcDSHOTFrame(uint16_t throttle, bool telemetry) {
+uint16_t calcFrame(uint16_t throttle, bool telemetry) {
   uint16_t value = 0;
   uint16_t crc = 0;
 
@@ -264,7 +267,7 @@ uint16_t calcDSHOTFrame(uint16_t throttle, bool telemetry) {
   }
 }
 
-void writeDSHOTFrame(uint16_t value, uint8_t* target) {
+void writeFrame(uint16_t value, uint8_t* target) {
   for (int i = 0; i < 16; i++) {
     if ( ((1 << i) & value) == (1 << i)) 
       target[15-i] = DSHOT_HIGH;
@@ -276,9 +279,13 @@ void writeDSHOTFrame(uint16_t value, uint8_t* target) {
   target[16] = 0;
 }
 
-void sendDSHOTCommand(uint8_t cmd, uint8_t *target, uint16_t delay_val, uint8_t num_repeat) {
+}
+
+using namespace detail;
+
+void sendCommand(uint8_t cmd, uint8_t *target, uint16_t delay_val, uint8_t num_repeat) {
   disable_dma_channels();
-  writeDSHOTFrame(calcDSHOTFrame(cmd,true), target);
+  writeFrame(calcFrame(cmd,true), target);
   DSHOT_CMD_REPEAT_CNT = num_repeat;
   DSHOT_SEND_CMD = true;
   enable_dma_channels();
@@ -286,7 +293,7 @@ void sendDSHOTCommand(uint8_t cmd, uint8_t *target, uint16_t delay_val, uint8_t 
   delay(delay_val);
 }
 
-void DSHOTArmDrone() {
+void ArmDrone() {
   TCC0->CCB[0].reg = (uint32_t) DSHOT_LOW;
   TCC0->CCB[1].reg = (uint32_t) DSHOT_LOW;
   TCC0->CCB[2].reg = (uint32_t) DSHOT_LOW;
@@ -299,22 +306,22 @@ void DSHOTArmDrone() {
   delay(1);
 }
 
-void DSHOTDisarmDrone() {
-  DSHOTArmDrone();
+void DisarmDrone() {
+  ArmDrone();
 }
 
-void DSHOTWrite(const DSHOTSetpoint* setpoints) {
+void Write(const Setpoint* setpoints) {
   if (DSHOT_READY) {
     DSHOT_READY = false;
-    writeDSHOTFrame(calcDSHOTFrame(setpoints->motor1), dshot_frame[0]);
-    writeDSHOTFrame(calcDSHOTFrame(setpoints->motor2), dshot_frame[1]);
-    writeDSHOTFrame(calcDSHOTFrame(setpoints->motor3), dshot_frame[2]);
-    writeDSHOTFrame(calcDSHOTFrame(setpoints->motor4), dshot_frame[3]);
+    writeFrame(calcFrame(setpoints->motor1), dshot_frame[0]);
+    writeFrame(calcFrame(setpoints->motor2), dshot_frame[1]);
+    writeFrame(calcFrame(setpoints->motor3), dshot_frame[2]);
+    writeFrame(calcFrame(setpoints->motor4), dshot_frame[3]);
     enable_dma_channels();
   }
 }
 
-int DSHOTInit(uint8_t DSHOT_MODE) {
+int Init(MODE DSHOT_MODE) {
   switch(DSHOT_MODE) {
     case DSHOT150:
       DSHOT_HIGH = DSHOT150_HIGH;
@@ -345,4 +352,6 @@ int DSHOTInit(uint8_t DSHOT_MODE) {
   setupDMA();
 
   return 0;
+}
+
 }
