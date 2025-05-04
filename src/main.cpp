@@ -2,9 +2,10 @@
 #include <Arduino.h>
 #include <wiring_private.h>
 
+#define NUM_MOTOR 4
+
 static int _writeResolution = 8;
 
-bool DMA_DISABLE = false;
 bool SEND_CMD = false;
 int CMD_REPEAT_CNT = 0;
 
@@ -21,14 +22,8 @@ struct dmaDescriptor {
   uint32_t descaddr;
 };
 
-struct DSHOTFrames {
-  uint8_t motor1[17] __attribute__ ((aligned (16))) = {0}; //{80,75,70,65,60,55,50,45,40,35,30,25,20,15,10,0};
-  uint8_t motor2[17] __attribute__ ((aligned (16))) = {0}; //{80,75,70,65,60,55,50,45,40,35,30,25,20,15,10,0};
-  uint8_t motor3[17] __attribute__ ((aligned (16))) = {0}; //{0,10,15,20,25,30,35,40,45,50,55,60,65,70,75,80};
-  uint8_t motor4[17] __attribute__ ((aligned (16))) = {0}; //{0,10,15,20,25,30,35,40,45,50,55,60,65,70,75,80};
-};
+uint8_t dshot_frame[NUM_MOTOR][17] __attribute__ ((aligned (16))) = {0};
 
-DSHOTFrames dshotFrames;
 
 volatile dmaDescriptor dmaDescriptorArray[4] __attribute__ ((aligned (16)));
 dmaDescriptor dmaDescriptorWritebackArray[4] __attribute__ ((aligned (16)));
@@ -117,93 +112,95 @@ void myAnalogWrite(int pin, int value, uint8_t group, uint8_t channel) {
   }
 }
 
+void enable_dma_channels() {
+  DMAC->CHID.reg = 0; // select channel 0
+  DMAC->CHCTRLA.reg |= DMAC_CHCTRLA_ENABLE;
+
+  DMAC->CHID.reg = 1; // select channel 0
+  DMAC->CHCTRLA.reg |= DMAC_CHCTRLA_ENABLE;
+
+  DMAC->CHID.reg = 2; // select channel 0
+  DMAC->CHCTRLA.reg |= DMAC_CHCTRLA_ENABLE;
+
+  DMAC->CHID.reg = 3; // select channel 0
+  DMAC->CHCTRLA.reg |= DMAC_CHCTRLA_ENABLE;
+}
+
+void disable_dma_channels() {
+  DMAC->CHID.reg = 0; // select channel 0
+  DMAC->CHCTRLA.reg &= ~DMAC_CHCTRLA_ENABLE;
+
+  DMAC->CHID.reg = 1; // select channel 0
+  DMAC->CHCTRLA.reg &= ~DMAC_CHCTRLA_ENABLE;
+
+  DMAC->CHID.reg = 2; // select channel 0
+  DMAC->CHCTRLA.reg &= ~DMAC_CHCTRLA_ENABLE;
+
+  DMAC->CHID.reg = 3; // select channel 0
+  DMAC->CHCTRLA.reg &= ~DMAC_CHCTRLA_ENABLE;
+}
+
 void DMAC_Handler() {
   // Must clear this flag! Otherwise the interrupt will be triggered over and over again.
   DMAC->CHINTFLAG.reg = DMAC_CHINTENCLR_MASK;
 
-  // TCC0->CCB[0].reg = (uint32_t) 0x00;
-  // TCC0->CCB[1].reg = (uint32_t) 0x00;
-  // TCC0->CCB[2].reg = (uint32_t) 0x00;
-  // TCC0->CCB[3].reg = (uint32_t) 0x00;
-
   if (SEND_CMD) {
     if (CMD_REPEAT_CNT == 0) {
-      DMAC->CHCTRLA.reg &= ~DMAC_CHCTRLA_ENABLE;
       SEND_CMD = false;
+      // TCC0->CCB[0].reg = (uint32_t) 0x00;
+      // TCC0->CCB[1].reg = (uint32_t) 0x00;
+      // TCC0->CCB[2].reg = (uint32_t) 0x00;
+      // TCC0->CCB[3].reg = (uint32_t) 0x00;
     } else {
       CMD_REPEAT_CNT--;
-      DMAC->CHCTRLA.reg |= DMAC_CHCTRLA_ENABLE;
+      enable_dma_channels();
     }
   } else {
-    DMAC->CHCTRLA.reg |= DMAC_CHCTRLA_ENABLE;
-  }
-
-  if (DMA_DISABLE) {
-    DMAC->CHCTRLA.reg &= ~DMAC_CHCTRLA_ENABLE;
+    // TCC0->CCB[0].reg = (uint32_t) 0x00;
+    // TCC0->CCB[1].reg = (uint32_t) 0x00;
+    // TCC0->CCB[2].reg = (uint32_t) 0x00;
+    // TCC0->CCB[3].reg = (uint32_t) 0x00;
   }
 
 }
 
 void setupDMA() {
-  dmaDescriptorArray[0].btctrl =  (1 << 0) |  // VALID: Descriptor Valid
-                                  (0 << 3) |  // BLOCKACT=NOACT: Block Action
-                                  (1 << 10) | // SRCINC: Source Address Increment Enable
-                                  (0 << 11) | // DSTINC: Destination Address Increment Enable
-                                  (1 << 12) | // STEPSEL=SRC: Step Selection
-                                  (0 << 13);  // STEPSIZE=X1: Address Increment Step Size
-  dmaDescriptorArray[0].btcnt = 17; // beat count
-  dmaDescriptorArray[0].dstaddr = (uint32_t) &(TCC0->CCB[0].reg);
-  dmaDescriptorArray[0].srcaddr = (uint32_t) &dshotFrames.motor1[17];
-  dmaDescriptorArray[0].descaddr = (uint32_t) &dmaDescriptorArray[1];
 
-  dmaDescriptorArray[1].btctrl =  (1 << 0) |  // VALID: Descriptor Valid
-                                  (0 << 3) |  // BLOCKACT=NOACT: Block Action
-                                  (1 << 10) | // SRCINC: Source Address Increment Enable
-                                  (0 << 11) | // DSTINC: Destination Address Increment Enable
-                                  (1 << 12) | // STEPSEL=SRC: Step Selection
-                                  (0 << 13);  // STEPSIZE=X1: Address Increment Step Size
-  dmaDescriptorArray[1].btcnt = 17; // beat count
-  dmaDescriptorArray[1].dstaddr = (uint32_t) &(TCC0->CCB[1].reg);
-  dmaDescriptorArray[1].srcaddr = (uint32_t) &dshotFrames.motor2[17];
-  dmaDescriptorArray[1].descaddr = (uint32_t) &dmaDescriptorArray[2];
-
-  dmaDescriptorArray[2].btctrl =  (1 << 0) |  // VALID: Descriptor Valid
-                                  (0 << 3) |  // BLOCKACT=NOACT: Block Action
-                                  (1 << 10) | // SRCINC: Source Address Increment Enable
-                                  (0 << 11) | // DSTINC: Destination Address Increment Enable
-                                  (1 << 12) | // STEPSEL=SRC: Step Selection
-                                  (0 << 13);  // STEPSIZE=X1: Address Increment Step Size
-  dmaDescriptorArray[2].btcnt = 17; // beat count
-  dmaDescriptorArray[2].dstaddr = (uint32_t) &(TCC0->CCB[2].reg);
-  dmaDescriptorArray[2].srcaddr = (uint32_t) &dshotFrames.motor3[17];
-  dmaDescriptorArray[2].descaddr = (uint32_t) &dmaDescriptorArray[3];
-
-  dmaDescriptorArray[3].btctrl =  (1 << 0) |  // VALID: Descriptor Valid
-                                  (0 << 3) |  // BLOCKACT=NOACT: Block Action
-                                  (1 << 10) | // SRCINC: Source Address Increment Enable
-                                  (0 << 11) | // DSTINC: Destination Address Increment Enable
-                                  (1 << 12) | // STEPSEL=SRC: Step Selection
-                                  (0 << 13);  // STEPSIZE=X1: Address Increment Step Size
-  dmaDescriptorArray[3].btcnt = 17; // beat count
-  dmaDescriptorArray[3].dstaddr = (uint32_t) &(TCC0->CCB[3].reg);
-  dmaDescriptorArray[3].srcaddr = (uint32_t) &dshotFrames.motor4[17];
-  dmaDescriptorArray[3].descaddr = (uint32_t) 0x00; // last of the 4 linked descriptors
+  for (int i = 0; i < NUM_MOTOR; i++) {
+    dmaDescriptorArray[i].btctrl =  (1 << 0) |  // VALID: Descriptor Valid
+                                    (0 << 3) |  // BLOCKACT=NOACT: Block Action
+                                    (1 << 10) | // SRCINC: Source Address Increment Enable
+                                    (0 << 11) | // DSTINC: Destination Address Increment Enable
+                                    (1 << 12) | // STEPSEL=SRC: Step Selection
+                                    (0 << 13);  // STEPSIZE=X1: Address Increment Step Size
+    dmaDescriptorArray[i].btcnt = 17; // beat count
+    dmaDescriptorArray[i].dstaddr = (uint32_t) &(TCC0->CCB[i].reg);
+    dmaDescriptorArray[i].srcaddr = (uint32_t) &dshot_frame[i][17];
+  }
 
   DMAC->BASEADDR.reg = (uint32_t)dmaDescriptorArray;
   DMAC->WRBADDR.reg = (uint32_t)dmaDescriptorWritebackArray;
 
   PM->AHBMASK.bit.DMAC_ = 1;
   PM->APBBMASK.bit.DMAC_ = 1;
-  DMAC->CTRL.reg = DMAC_CTRL_DMAENABLE | DMAC_CTRL_LVLEN(0xf);
   
+  for (int i = 0; i < NUM_MOTOR; i++) {
+    DMAC->CHID.reg = i; // select channel i
+    DMAC->CHCTRLB.reg = DMAC_CHCTRLB_LVL(0) | DMAC_CHCTRLB_TRIGSRC(TCC0_DMAC_ID_OVF) | DMAC_CHCTRLB_TRIGACT_BEAT;
+  }
 
-  DMAC->CHID.reg = 0; // select channel 0
-  DMAC->CHCTRLB.reg = DMAC_CHCTRLB_LVL(0) | DMAC_CHCTRLB_TRIGSRC(TCC0_DMAC_ID_OVF) | DMAC_CHCTRLB_TRIGACT_BEAT;
+  DMAC->CTRL.reg = DMAC_CTRL_DMAENABLE | DMAC_CTRL_LVLEN(0xf);
 
+  // for (int i = 0; i < NUM_MOTOR; i++) {
+  //   DMAC->CHID.reg = i;
+  //   DMAC->CHINTENSET.reg = DMAC_CHINTENSET_TCMPL;
+  // }
+
+  DMAC->CHID.reg = 3;
   DMAC->CHINTENSET.reg = DMAC_CHINTENSET_TCMPL;
   NVIC_EnableIRQ(DMAC_IRQn);
 
-  DMAC->CHCTRLA.reg |= DMAC_CHCTRLA_ENABLE;
+  enable_dma_channels();
 
 }
 
@@ -235,11 +232,11 @@ void writeDSHOTFrame(uint16_t value, uint8_t* target) {
 }
 
 void sendCommand(uint8_t cmd, uint8_t *target, uint16_t delay_val = 0, uint8_t num_repeat = 0) {
-  DMAC->CHCTRLA.reg &= ~DMAC_CHCTRLA_ENABLE;
+  disable_dma_channels();
   writeDSHOTFrame(calcDSHOTFrame(cmd), target);
   CMD_REPEAT_CNT = num_repeat;
   SEND_CMD = true;
-  DMAC->CHCTRLA.reg |= DMAC_CHCTRLA_ENABLE;
+  enable_dma_channels();
 
   // delay(delay_val);
 }
@@ -272,29 +269,37 @@ void setup() {
 
   delay(100);
 
-  sendCommand(20, dshotFrames.motor1, 0, 6);
+  sendCommand(20, dshot_frame[0], 0, 6);
 
   delay(300);
   arm_drone();
 
-  // sendCommand(200, dshotFrames.motor1, 1);
-  // sendCommand(200, dshotFrames.motor1, 1);
-  // sendCommand(200, dshotFrames.motor1, 1);
-
-  // writeDSHOTFrame(calcDSHOTFrame(100), dshotFrames.motor1);
-  // DMAC->CHCTRLA.reg |= DMAC_CHCTRLA_ENABLE;
-
-  // delay(500);
+  // // sendCommand(200, dshotFrames.motor1, 1);
+  // // sendCommand(200, dshotFrames.motor1, 1);
+  // // sendCommand(200, dshotFrames.motor1, 1);
 
   // // writeDSHOTFrame(calcDSHOTFrame(100), dshotFrames.motor1);
   // // DMAC->CHCTRLA.reg |= DMAC_CHCTRLA_ENABLE;
 
   // // delay(500);
 
-  // // writeDSHOTFrame(calcDSHOTFrame(48), dshotFrames.motor1);
-  // // DMAC->CHCTRLA.reg |= DMAC_CHCTRLA_ENABLE;
+  // // // writeDSHOTFrame(calcDSHOTFrame(100), dshotFrames.motor1);
+  // // // DMAC->CHCTRLA.reg |= DMAC_CHCTRLA_ENABLE;
 
-  // DMA_DISABLE = false;
+  // // // delay(500);
+
+  // // // writeDSHOTFrame(calcDSHOTFrame(48), dshotFrames.motor1);
+  // // // DMAC->CHCTRLA.reg |= DMAC_CHCTRLA_ENABLE;
+
+  // // DMA_DISABLE = false;
+
+  // delay(10);
+
+  // writeDSHOTFrame(calcDSHOTFrame(100), dshotFrames.motor1);
+  // writeDSHOTFrame(calcDSHOTFrame(50), dshotFrames.motor2);
+  // writeDSHOTFrame(calcDSHOTFrame(200), dshotFrames.motor3);
+  // writeDSHOTFrame(calcDSHOTFrame(300), dshotFrames.motor4);
+  // enable_dma_channels();
 }
 
 void loop() {
@@ -324,7 +329,13 @@ void loop() {
 
   analogWrite(LED_BUILTIN, setpoint);
 
-  writeDSHOTFrame(calcDSHOTFrame(setpoint), dshotFrames.motor1);
-  DMAC->CHCTRLA.reg |= DMAC_CHCTRLA_ENABLE;
+  // disable_dma_channels();
+  writeDSHOTFrame(calcDSHOTFrame(setpoint), dshot_frame[0]);
+  writeDSHOTFrame(calcDSHOTFrame(setpoint), dshot_frame[1]);
+  writeDSHOTFrame(calcDSHOTFrame(setpoint), dshot_frame[2]);
+  writeDSHOTFrame(calcDSHOTFrame(setpoint), dshot_frame[3]);
+  enable_dma_channels();
+
+  delay(10);
 
 }
