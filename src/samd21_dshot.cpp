@@ -1,6 +1,78 @@
 
 #include "samd21_dshot.h"
 
+static int _writeResolution = 8;
+
+bool DSHOT_READY = false;
+bool DSHOT_SEND_CMD = false;
+int DSHOT_CMD_REPEAT_CNT = 0;
+
+/*
+  Based on: https://betaflight.com/docs/development/api/dshot
+
+  Clock frequency is 48 MHz with external crystal and ~46.2222 MHz without
+
+  DSHOTX_HIGH and DSHOTX_LOW values are the number of clk cycles to wait befor pulling a PWM signal from 1 to 0. 
+  They are the compare values used in the TCC pwm module.
+
+  DSHOTX_BIT_PERIOD is the period(also known as TOP) value used in the TCC pwm module.
+  It is equivalent to the number of clk cycles of a single pwm period.
+
+  DSHOTX_num_clk_cycles = clk_freq * time_to_wait
+
+*/
+
+#ifdef CRYSTALLESS
+  constexpr uint8_t DSHOT150_HIGH = 231;
+  constexpr uint8_t DSHOT150_LOW = 116;
+  constexpr uint16_t DSHOT150_BIT_PERIOD = 308;
+
+  constexpr uint8_t DSHOT300_HIGH = 116;
+  constexpr uint8_t DSHOT300_LOW = 58;
+  constexpr uint16_t DSHOT300_BIT_PERIOD = 154;
+
+  constexpr uint8_t DSHOT600_HIGH = 58;
+  constexpr uint8_t DSHOT600_LOW = 29;
+  constexpr uint16_t DSHOT600_BIT_PERIOD = 77;
+
+  constexpr uint8_t DSHOT1200_HIGH = 29;
+  constexpr uint8_t DSHOT1200_LOW = 14;
+  constexpr uint16_t DSHOT1200_BIT_PERIOD = 38;
+#else
+  constexpr uint8_t DSHOT150_HIGH = 240;
+  constexpr uint8_t DSHOT150_LOW = 120;
+  constexpr uint16_t DSHOT150_BIT_PERIOD = 320;
+
+  constexpr uint8_t DSHOT300_HIGH = 120;
+  constexpr uint8_t DSHOT300_LOW = 60;
+  constexpr uint16_t DSHOT300_BIT_PERIOD = 160;
+
+  constexpr uint8_t DSHOT600_HIGH = 60;
+  constexpr uint8_t DSHOT600_LOW = 30;
+  constexpr uint16_t DSHOT600_BIT_PERIOD = 80;
+
+  constexpr uint8_t DSHOT1200_HIGH = 30;
+  constexpr uint8_t DSHOT1200_LOW = 15;
+  constexpr uint16_t DSHOT1200_BIT_PERIOD = 40;
+#endif
+
+uint8_t DSHOT_HIGH;
+uint8_t DSHOT_LOW;
+uint16_t DSHOT_BIT_PERIOD;
+
+struct dmaDescriptor {
+  uint16_t btctrl;
+  uint16_t btcnt;
+  uint32_t srcaddr;
+  uint32_t dstaddr;
+  uint32_t descaddr;
+};
+
+volatile dmaDescriptor dmaDescriptorArray[4] __attribute__ ((aligned (16)));
+volatile dmaDescriptor dmaDescriptorWritebackArray[4] __attribute__ ((aligned (16)));
+
+uint8_t dshot_frame[DSHOT_NUM_MOTOR][DSHOT_FRAME_SIZE+1] __attribute__ ((aligned (16)));
+
 // Wait for synchronization of registers between the clock domains
 static __inline__ void syncTC_16(Tc* TCx) __attribute__((always_inline, unused));
 static void syncTC_16(Tc* TCx) {
