@@ -1,95 +1,5 @@
 
-#include <Arduino.h>
-#include <wiring_private.h>
-
-#define DSHOT_NUM_MOTOR 4
-#define DSHOT_FRAME_SIZE 16
-
-static int _writeResolution = 8;
-
-bool DSHOT_READY = false;
-bool DSHOT_SEND_CMD = false;
-int DSHOT_CMD_REPEAT_CNT = 0;
-
-enum {
-  DSHOT150,
-  DSHOT300,
-  DSHOT600,
-  DSHOT1200
-};
-
-/*
-  Based on: https://betaflight.com/docs/development/api/dshot
-
-  Clock frequency is 48 MHz with external crystal and ~46.2222 MHz without
-
-  DSHOTX_HIGH and DSHOTX_LOW values are the number of clk cycles to wait befor pulling a PWM signal from 1 to 0. 
-  They are the compare values used in the TCC pwm module.
-
-  DSHOTX_BIT_PERIOD is the period(also known as TOP) value used in the TCC pwm module.
-  It is equivalent to the number of clk cycles of a single pwm period.
-
-  DSHOTX_num_clk_cycles = clk_freq * time_to_wait
-
-*/
-
-#ifdef CRYSTALLESS
-  const uint8_t DSHOT150_HIGH = 231;
-  const uint8_t DSHOT150_LOW = 116;
-  const uint16_t DSHOT150_BIT_PERIOD = 308;
-
-  const uint8_t DSHOT300_HIGH = 116;
-  const uint8_t DSHOT300_LOW = 58;
-  const uint16_t DSHOT300_BIT_PERIOD = 154;
-
-  const uint8_t DSHOT600_HIGH = 58;
-  const uint8_t DSHOT600_LOW = 29;
-  const uint16_t DSHOT600_BIT_PERIOD = 77;
-
-  const uint8_t DSHOT1200_HIGH = 29;
-  const uint8_t DSHOT1200_LOW = 14;
-  const uint16_t DSHOT1200_BIT_PERIOD = 38;
-#else
-  const uint8_t DSHOT150_HIGH = 240;
-  const uint8_t DSHOT150_LOW = 120;
-  const uint16_t DSHOT150_BIT_PERIOD = 320;
-
-  const uint8_t DSHOT300_HIGH = 120;
-  const uint8_t DSHOT300_LOW = 60;
-  const uint16_t DSHOT300_BIT_PERIOD = 160;
-
-  const uint8_t DSHOT600_HIGH = 60;
-  const uint8_t DSHOT600_LOW = 30;
-  const uint16_t DSHOT600_BIT_PERIOD = 80;
-
-  const uint8_t DSHOT1200_HIGH = 30;
-  const uint8_t DSHOT1200_LOW = 15;
-  const uint16_t DSHOT1200_BIT_PERIOD = 40;
-#endif
-
-uint8_t DSHOT_HIGH;
-uint8_t DSHOT_LOW;
-uint16_t DSHOT_BIT_PERIOD;
-
-struct dmaDescriptor {
-  uint16_t btctrl;
-  uint16_t btcnt;
-  uint32_t srcaddr;
-  uint32_t dstaddr;
-  uint32_t descaddr;
-};
-
-volatile dmaDescriptor dmaDescriptorArray[4] __attribute__ ((aligned (16)));
-dmaDescriptor dmaDescriptorWritebackArray[4] __attribute__ ((aligned (16)));
-
-uint8_t dshot_frame[DSHOT_NUM_MOTOR][DSHOT_FRAME_SIZE+1] __attribute__ ((aligned (16))) = {0};
-
-struct DSHOTSetpoint {
-  int motor1 = 0;
-  int motor2 = 0;
-  int motor3 = 0; 
-  int motor4 = 0;
-};
+#include "samd21_dshot.h"
 
 // Wait for synchronization of registers between the clock domains
 static __inline__ void syncTC_16(Tc* TCx) __attribute__((always_inline, unused));
@@ -265,7 +175,7 @@ void setupDMA() {
   enable_dma_channels();
 }
 
-uint16_t calcDSHOTFrame(uint16_t throttle, bool telemetry = false) {
+uint16_t calcDSHOTFrame(uint16_t throttle, bool telemetry) {
   uint16_t value = 0;
   uint16_t crc = 0;
 
@@ -294,7 +204,7 @@ void writeDSHOTFrame(uint16_t value, uint8_t* target) {
   target[16] = 0;
 }
 
-void sendDSHOTCommand(uint8_t cmd, uint8_t *target, uint16_t delay_val = 0, uint8_t num_repeat = 0) {
+void sendDSHOTCommand(uint8_t cmd, uint8_t *target, uint16_t delay_val, uint8_t num_repeat) {
   disable_dma_channels();
   writeDSHOTFrame(calcDSHOTFrame(cmd,true), target);
   DSHOT_CMD_REPEAT_CNT = num_repeat;
@@ -363,93 +273,4 @@ int DSHOTInit(uint8_t DSHOT_MODE) {
   setupDMA();
 
   return 0;
-}
-
-DSHOTSetpoint setpoints;
-
-void setup() {
-
-  // SerialUSB.begin(9600);
-  pinMode(LED_BUILTIN, OUTPUT);
-
-  DSHOTInit(DSHOT300);
-
-  // delay(100);
-
-  // sendDSHOTCommand(17, dshot_frame[0], 2, 5);
-
-  // sendDSHOTCommand(12, dshot_frame[0], 12, 5);
-
-  // sendDSHOTCommand(27, dshot_frame[0], 2, 6);
-  // sendDSHOTCommand(28, dshot_frame[0], 2, 6);
-  // sendDSHOTCommand(29, dshot_frame[0], 2, 6);
-
-
-  delay(300);
-  DSHOTArmDrone();
-
-  // // sendDSHOTCommand(200, dshotFrames.motor1, 1);
-  // // sendDSHOTCommand(200, dshotFrames.motor1, 1);
-  // // sendDSHOTCommand(200, dshotFrames.motor1, 1);
-
-  // // writeDSHOTFrame(calcDSHOTFrame(100), dshotFrames.motor1);
-  // // DMAC->CHCTRLA.reg |= DMAC_CHCTRLA_ENABLE;
-
-  // // delay(500);
-
-  // // // writeDSHOTFrame(calcDSHOTFrame(100), dshotFrames.motor1);
-  // // // DMAC->CHCTRLA.reg |= DMAC_CHCTRLA_ENABLE;
-
-  // // // delay(500);
-
-  // // // writeDSHOTFrame(calcDSHOTFrame(48), dshotFrames.motor1);
-  // // // DMAC->CHCTRLA.reg |= DMAC_CHCTRLA_ENABLE;
-
-  // // DMA_DISABLE = false;
-
-  // delay(10);
-
-  // writeDSHOTFrame(calcDSHOTFrame(100), dshotFrames.motor1);
-  // writeDSHOTFrame(calcDSHOTFrame(50), dshotFrames.motor2);
-  // writeDSHOTFrame(calcDSHOTFrame(200), dshotFrames.motor3);
-  // writeDSHOTFrame(calcDSHOTFrame(300), dshotFrames.motor4);
-  // enable_dma_channels();
-}
-
-void loop() {
-  // while (Serial.available() > 0) {
-
-  //   // look for the next valid integer in the incoming serial stream:
-  //   int red = Serial.parseInt();
-
-  //   // look for the newline. That's the end of your sentence:
-  //   if (Serial.read() == '\n') {
-  //     // constrain the values to 0 - 255 and invert
-  //     // if you're using a common-cathode LED, just use "constrain(color, 0, 255);"
-  //     red = constrain(red, 48, 2047);
-
-  //     // fade the red, green, and blue legs of the LED:
-  //     writeDSHOTFrame(calcDSHOTFrame(red), dshotFrames.motor1);
-  //     DMAC->CHCTRLA.reg |= DMAC_CHCTRLA_ENABLE;
-
-  //     // print the three numbers in one string as hexadecimal:
-  //     Serial.print(red, HEX);
-
-  //   }
-  // }
-
-  int x_read = analogRead(A5);
-  int setpoint = constrain(round(2047/1023.0 * x_read), 48, 250);
-
-  analogWrite(LED_BUILTIN, setpoint*255/250.0);
-
-  setpoints.motor1 = setpoint;
-  setpoints.motor2 = setpoint;
-  setpoints.motor3 = setpoint;
-  setpoints.motor4 = setpoint;
-
-  DSHOTWrite(&setpoints);
-
-  // delay(1);
-
 }
