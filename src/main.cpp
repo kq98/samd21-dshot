@@ -211,7 +211,7 @@ void setupDMA() {
 
 }
 
-uint16_t calcDSHOTFrame(uint16_t throttle) {
+uint16_t calcDSHOTFrame(uint16_t throttle, bool telemetry = false) {
   uint16_t value = 0;
   uint16_t crc = 0;
 
@@ -219,6 +219,7 @@ uint16_t calcDSHOTFrame(uint16_t throttle) {
     return 0xFFFF;
   else {
     value = throttle << 1; // Telemetry = 0
+    value |= 1 ? telemetry : 0;
     crc = (value ^ (value >> 4) ^ (value >> 8)) & 0x0F;
     value = value << 4; // Shift thottle and telemetry into upper 12 bits to make space for crc
     value = value | crc;
@@ -240,12 +241,12 @@ void writeDSHOTFrame(uint16_t value, uint8_t* target) {
 
 void sendCommand(uint8_t cmd, uint8_t *target, uint16_t delay_val = 0, uint8_t num_repeat = 0) {
   disable_dma_channels();
-  writeDSHOTFrame(calcDSHOTFrame(cmd), target);
+  writeDSHOTFrame(calcDSHOTFrame(cmd,true), target);
   CMD_REPEAT_CNT = num_repeat;
   SEND_CMD = true;
   enable_dma_channels();
 
-  // delay(delay_val);
+  delay(delay_val);
 }
 
 void arm_drone() {
@@ -274,9 +275,15 @@ void setup() {
 
   setupDMA();
 
-  delay(100);
+  // delay(100);
 
-  sendCommand(20, dshot_frame[0], 0, 6);
+  // sendCommand(17, dshot_frame[0], 2, 5);
+
+  // sendCommand(12, dshot_frame[0], 12, 5);
+
+  // sendCommand(16, dshot_frame[0], 2, 5);
+  // sendCommand(17, dshot_frame[0], 2, 5);
+
 
   delay(300);
   arm_drone();
@@ -331,20 +338,20 @@ void loop() {
   //   }
   // }
 
-  // int x_read = analogRead(A5);
-  // int setpoint = constrain(round(2047/1023.0 * x_read), 48, 1047);
+  int x_read = analogRead(A5);
+  int setpoint = constrain(round(2047/1023.0 * x_read), 48, 1047);
 
-  // // analogWrite(LED_BUILTIN, setpoint);
+  // analogWrite(LED_BUILTIN, setpoint);
 
 
-  // if (DSHOT_READY) {
-  //   DSHOT_READY = false;
-  //   writeDSHOTFrame(calcDSHOTFrame(setpoint), dshot_frame[0]);
-  //   writeDSHOTFrame(calcDSHOTFrame(setpoint), dshot_frame[1]);
-  //   writeDSHOTFrame(calcDSHOTFrame(setpoint), dshot_frame[2]);
-  //   writeDSHOTFrame(calcDSHOTFrame(setpoint), dshot_frame[3]);
-  //   enable_dma_channels();
-  // }
+  if (DSHOT_READY) {
+    DSHOT_READY = false;
+    writeDSHOTFrame(calcDSHOTFrame(50), dshot_frame[0]);
+    writeDSHOTFrame(calcDSHOTFrame(150), dshot_frame[1]);
+    writeDSHOTFrame(calcDSHOTFrame(300), dshot_frame[2]);
+    writeDSHOTFrame(calcDSHOTFrame(2000), dshot_frame[3]);
+    enable_dma_channels();
+  }
 
   // delay(1);
 
