@@ -344,7 +344,6 @@ int Init(MODE DSHOT_MODE) {
       DSHOT_BIT_PERIOD = DSHOT1200_BIT_PERIOD;
       break;
     default:
-      printf("[Error] Unknown DSHOT MODE");
       return -1;
   }
 

@@ -69,3 +69,15 @@ void loop() {
 
 }
 ```
+
+## Further resources
+I have taken inspiration from the following sources. They should be a good starting point to extend and adapt this project to your needs:
+
+* https://aykevl.nl/2019/09/samd21-dma -- Getting started with DMA on SAMD21
+
+* https://shawnhymel.com/1710/arduino-zero-samd21-raw-pwm-using-cmsis/ -- Configuring TCC for PWM on SAMD21
+
+* https://github.com/arduino/ArduinoCore-samd/tree/master/cores/arduino -- The arduino framework is a great resource even if you don't intent to use the entire framework
+
+* https://betaflight.com/docs/development/api/dshot
+
