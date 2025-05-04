@@ -3,6 +3,7 @@
 #include <wiring_private.h>
 
 #define NUM_MOTOR 4
+#define FRAME_SIZE 16
 
 static int _writeResolution = 8;
 
@@ -10,10 +11,50 @@ bool DSHOT_READY = false;
 bool SEND_CMD = false;
 int CMD_REPEAT_CNT = 0;
 
-int counter[4] = {0, 0, 0, 0};
+enum {
+  DSHOT150,
+  DSHOT300,
+  DSHOT600,
+  DSHOT1200
+};
 
-uint8_t DSHOT600_HIGH = 60;
-uint8_t DSHOT600_LOW = 30;
+#ifdef CRYSTALLESS
+  const uint8_t DSHOT150_HIGH = 231;
+  const uint8_t DSHOT150_LOW = 116;
+  const uint8_t DSHOT150_BIT_PERIOD = 308;
+
+  const uint8_t DSHOT300_HIGH = 116;
+  const uint8_t DSHOT300_LOW = 58;
+  const uint8_t DSHOT300_BIT_PERIOD = 154;
+
+  const uint8_t DSHOT600_HIGH = 58;
+  const uint8_t DSHOT600_LOW = 29;
+  const uint8_t DSHOT600_BIT_PERIOD = 77;
+
+  const uint8_t DSHOT1200_HIGH = 29;
+  const uint8_t DSHOT1200_LOW = 14;
+  const uint8_t DSHOT1200_BIT_PERIOD = 38;
+#else
+  const uint8_t DSHOT120_HIGH = 240;
+  const uint8_t DSHOT120_LOW = 120;
+  const uint8_t DSHOT120_BIT_PERIOD = 320;
+
+  const uint8_t DSHOT300_HIGH = 120;
+  const uint8_t DSHOT300_LOW = 60;
+  const uint8_t DSHOT300_BIT_PERIOD = 160;
+
+  const uint8_t DSHOT600_HIGH = 60;
+  const uint8_t DSHOT600_LOW = 30;
+  const uint8_t DSHOT600_BIT_PERIOD = 80;
+
+  const uint8_t DSHOT1200_HIGH = 30;
+  const uint8_t DSHOT1200_LOW = 15;
+  const uint8_t DSHOT1200_BIT_PERIOD = 40;
+#endif
+
+uint8_t DSHOT_HIGH;
+uint8_t DSHOT_LOW;
+uint8_t DSHOT_BIT_PERIOD;
 
 struct dmaDescriptor {
   uint16_t btctrl;
@@ -23,11 +64,17 @@ struct dmaDescriptor {
   uint32_t descaddr;
 };
 
-uint8_t dshot_frame[NUM_MOTOR][17] __attribute__ ((aligned (16))) = {0};
-
-
 volatile dmaDescriptor dmaDescriptorArray[4] __attribute__ ((aligned (16)));
 dmaDescriptor dmaDescriptorWritebackArray[4] __attribute__ ((aligned (16)));
+
+uint8_t dshot_frame[NUM_MOTOR][17] __attribute__ ((aligned (16))) = {0};
+
+struct DSHOTSetpoint {
+  int motor1 = 0;
+  int motor2 = 0;
+  int motor3 = 0; 
+  int motor4 = 0;
+};
 
 // Wait for synchronization of registers between the clock domains
 static __inline__ void syncTC_16(Tc* TCx) __attribute__((always_inline, unused));
@@ -52,7 +99,7 @@ static inline uint32_t mapResolution(uint32_t value, uint32_t from, uint32_t to)
   return value << (to-from);
 }
 
-void myAnalogWrite(int pin, int value, uint8_t group, uint8_t channel) {
+void DSHOTAnalogWrite(int pin, int value, uint8_t group, uint8_t channel) {
 
   PinDescription pinDesc = g_APinDescription[pin];
   uint32_t attr = pinDesc.ulPinAttribute;
@@ -97,7 +144,7 @@ void myAnalogWrite(int pin, int value, uint8_t group, uint8_t channel) {
     TCCx->CC[channel].reg = (uint32_t) value;
     syncTCC(TCCx);
     // Set PER to maximum counter value (resolution : 0xFFFF)
-    TCCx->PER.reg = 0x0050; //48 MHz * 1,67 us = 80,16 appr. = 80 = 0x50
+    TCCx->PER.reg = 154; //48 MHz * 1,67 us = 80,16 appr. = 80 = 0x50
     syncTCC(TCCx);
     // Enable TCCx
     TCCx->CTRLA.bit.ENABLE = 1;
@@ -116,32 +163,32 @@ void myAnalogWrite(int pin, int value, uint8_t group, uint8_t channel) {
 void enable_dma_channels() {
   DMAC->CTRL.reg &= ~DMAC_CTRL_DMAENABLE;
 
-  DMAC->CHID.reg = 0; // select channel 0
+  DMAC->CHID.reg = 0;
   DMAC->CHCTRLA.reg |= DMAC_CHCTRLA_ENABLE;
 
-  DMAC->CHID.reg = 1; // select channel 0
+  DMAC->CHID.reg = 1; 
   DMAC->CHCTRLA.reg |= DMAC_CHCTRLA_ENABLE;
 
-  DMAC->CHID.reg = 2; // select channel 0
+  DMAC->CHID.reg = 2;
   DMAC->CHCTRLA.reg |= DMAC_CHCTRLA_ENABLE;
 
-  DMAC->CHID.reg = 3; // select channel 0
+  DMAC->CHID.reg = 3;
   DMAC->CHCTRLA.reg |= DMAC_CHCTRLA_ENABLE;
 
   DMAC->CTRL.reg |= DMAC_CTRL_DMAENABLE;
 }
 
 void disable_dma_channels() {
-  DMAC->CHID.reg = 0; // select channel 0
+  DMAC->CHID.reg = 0;
   DMAC->CHCTRLA.reg &= ~DMAC_CHCTRLA_ENABLE;
 
-  DMAC->CHID.reg = 1; // select channel 0
+  DMAC->CHID.reg = 1;
   DMAC->CHCTRLA.reg &= ~DMAC_CHCTRLA_ENABLE;
 
-  DMAC->CHID.reg = 2; // select channel 0
+  DMAC->CHID.reg = 2;
   DMAC->CHCTRLA.reg &= ~DMAC_CHCTRLA_ENABLE;
 
-  DMAC->CHID.reg = 3; // select channel 0
+  DMAC->CHID.reg = 3;
   DMAC->CHCTRLA.reg &= ~DMAC_CHCTRLA_ENABLE;
 }
 
@@ -152,10 +199,6 @@ void DMAC_Handler() {
   if (SEND_CMD) {
     if (CMD_REPEAT_CNT == 0) {
       SEND_CMD = false;
-      // TCC0->CCB[0].reg = (uint32_t) 0x00;
-      // TCC0->CCB[1].reg = (uint32_t) 0x00;
-      // TCC0->CCB[2].reg = (uint32_t) 0x00;
-      // TCC0->CCB[3].reg = (uint32_t) 0x00;
     } else {
       CMD_REPEAT_CNT--;
       DSHOT_READY = true;
@@ -163,12 +206,14 @@ void DMAC_Handler() {
     }
   } else {
     DSHOT_READY = true;
-    // TCC0->CCB[0].reg = (uint32_t) 0x00;
-    // TCC0->CCB[1].reg = (uint32_t) 0x00;
-    // TCC0->CCB[2].reg = (uint32_t) 0x00;
-    // TCC0->CCB[3].reg = (uint32_t) 0x00;
   }
+}
 
+void setupTCC() {
+  DSHOTAnalogWrite(4, 0, PORT_PMUX_PMUXE_E, 0); //PA08
+  DSHOTAnalogWrite(3, 0, PORT_PMUX_PMUXO_F, 1); //PA09
+  DSHOTAnalogWrite(6, 0, PORT_PMUX_PMUXE_F, 2); //PA20
+  DSHOTAnalogWrite(7, 0, PORT_PMUX_PMUXO_F, 3); //PA21
 }
 
 void setupDMA() {
@@ -198,17 +243,11 @@ void setupDMA() {
 
   DMAC->CTRL.reg = DMAC_CTRL_DMAENABLE | DMAC_CTRL_LVLEN(0xf);
 
-  // for (int i = 0; i < NUM_MOTOR; i++) {
-  //   DMAC->CHID.reg = i;
-  //   DMAC->CHINTENSET.reg = DMAC_CHINTENSET_TCMPL;
-  // }
-
   DMAC->CHID.reg = 3;
   DMAC->CHINTENSET.reg = DMAC_CHINTENSET_TCMPL;
   NVIC_EnableIRQ(DMAC_IRQn);
 
   enable_dma_channels();
-
 }
 
 uint16_t calcDSHOTFrame(uint16_t throttle, bool telemetry = false) {
@@ -231,15 +270,15 @@ uint16_t calcDSHOTFrame(uint16_t throttle, bool telemetry = false) {
 void writeDSHOTFrame(uint16_t value, uint8_t* target) {
   for (int i = 0; i < 16; i++) {
     if ( ((1 << i) & value) == (1 << i)) 
-      target[15-i] = DSHOT600_HIGH;
+      target[15-i] = DSHOT_HIGH;
     else
-      target[15-i] = DSHOT600_LOW;
+      target[15-i] = DSHOT_LOW;
   }
 
   target[16] = 0;
 }
 
-void sendCommand(uint8_t cmd, uint8_t *target, uint16_t delay_val = 0, uint8_t num_repeat = 0) {
+void sendDSHOTCommand(uint8_t cmd, uint8_t *target, uint16_t delay_val = 0, uint8_t num_repeat = 0) {
   disable_dma_channels();
   writeDSHOTFrame(calcDSHOTFrame(cmd,true), target);
   CMD_REPEAT_CNT = num_repeat;
@@ -249,48 +288,93 @@ void sendCommand(uint8_t cmd, uint8_t *target, uint16_t delay_val = 0, uint8_t n
   delay(delay_val);
 }
 
-void arm_drone() {
-  TCC0->CCB[0].reg = (uint32_t) DSHOT600_LOW;
-  TCC0->CCB[1].reg = (uint32_t) DSHOT600_LOW;
-  TCC0->CCB[2].reg = (uint32_t) DSHOT600_LOW;
-  TCC0->CCB[3].reg = (uint32_t) DSHOT600_LOW;
+void DSHOTArmDrone() {
+  TCC0->CCB[0].reg = (uint32_t) DSHOT_LOW;
+  TCC0->CCB[1].reg = (uint32_t) DSHOT_LOW;
+  TCC0->CCB[2].reg = (uint32_t) DSHOT_LOW;
+  TCC0->CCB[3].reg = (uint32_t) DSHOT_LOW;
   delay(300);
   TCC0->CCB[0].reg = (uint32_t) 0x00;
   TCC0->CCB[1].reg = (uint32_t) 0x00;
   TCC0->CCB[2].reg = (uint32_t) 0x00;
   TCC0->CCB[3].reg = (uint32_t) 0x00;
   delay(1);
-
 }
+
+void DSHOTDisarmDrone() {
+  DSHOTArmDrone();
+}
+
+void DSHOTWrite(const DSHOTSetpoint* setpoints) {
+  if (DSHOT_READY) {
+    DSHOT_READY = false;
+    writeDSHOTFrame(calcDSHOTFrame(setpoints->motor1), dshot_frame[0]);
+    writeDSHOTFrame(calcDSHOTFrame(setpoints->motor2), dshot_frame[1]);
+    writeDSHOTFrame(calcDSHOTFrame(setpoints->motor3), dshot_frame[2]);
+    writeDSHOTFrame(calcDSHOTFrame(setpoints->motor4), dshot_frame[3]);
+    enable_dma_channels();
+  }
+}
+
+int DSHOTInit(uint8_t DSHOT_MODE) {
+  switch(DSHOT_MODE) {
+    case DSHOT150:
+      DSHOT_HIGH = DSHOT150_HIGH;
+      DSHOT_LOW  = DSHOT150_LOW;
+      DSHOT_BIT_PERIOD = DSHOT150_BIT_PERIOD;
+      break;
+    case DSHOT300:
+      DSHOT_HIGH = DSHOT300_HIGH;
+      DSHOT_LOW  = DSHOT300_LOW;
+      DSHOT_BIT_PERIOD = DSHOT300_BIT_PERIOD;
+      break;
+    case DSHOT600:
+      DSHOT_HIGH = DSHOT600_HIGH;
+      DSHOT_LOW  = DSHOT600_LOW;
+      DSHOT_BIT_PERIOD = DSHOT600_BIT_PERIOD;
+      break;
+    case DSHOT1200:
+      DSHOT_HIGH = DSHOT1200_HIGH;
+      DSHOT_LOW  = DSHOT1200_LOW;
+      DSHOT_BIT_PERIOD = DSHOT1200_BIT_PERIOD;
+      break;
+    default:
+      printf("[Error] Unknown DSHOT MODE");
+      return -1;
+  }
+
+  setupTCC();
+  setupDMA();
+
+  return 0;
+}
+
+DSHOTSetpoint setpoints;
 
 void setup() {
 
   // SerialUSB.begin(9600);
   pinMode(LED_BUILTIN, OUTPUT);
 
-  myAnalogWrite(4, 0, PORT_PMUX_PMUXE_E, 0); //PA08
-  myAnalogWrite(3, 0, PORT_PMUX_PMUXO_F, 1); //PA09
-  myAnalogWrite(6, 0, PORT_PMUX_PMUXE_F, 2); //PA20
-  myAnalogWrite(7, 0, PORT_PMUX_PMUXO_F, 3); //PA21
-
-  setupDMA();
+  DSHOTInit(DSHOT300);
 
   // delay(100);
 
-  // sendCommand(17, dshot_frame[0], 2, 5);
+  // sendDSHOTCommand(17, dshot_frame[0], 2, 5);
 
-  // sendCommand(12, dshot_frame[0], 12, 5);
+  // sendDSHOTCommand(12, dshot_frame[0], 12, 5);
 
-  // sendCommand(16, dshot_frame[0], 2, 5);
-  // sendCommand(17, dshot_frame[0], 2, 5);
+  // sendDSHOTCommand(27, dshot_frame[0], 2, 6);
+  // sendDSHOTCommand(28, dshot_frame[0], 2, 6);
+  // sendDSHOTCommand(29, dshot_frame[0], 2, 6);
 
 
   delay(300);
-  arm_drone();
+  DSHOTArmDrone();
 
-  // // sendCommand(200, dshotFrames.motor1, 1);
-  // // sendCommand(200, dshotFrames.motor1, 1);
-  // // sendCommand(200, dshotFrames.motor1, 1);
+  // // sendDSHOTCommand(200, dshotFrames.motor1, 1);
+  // // sendDSHOTCommand(200, dshotFrames.motor1, 1);
+  // // sendDSHOTCommand(200, dshotFrames.motor1, 1);
 
   // // writeDSHOTFrame(calcDSHOTFrame(100), dshotFrames.motor1);
   // // DMAC->CHCTRLA.reg |= DMAC_CHCTRLA_ENABLE;
@@ -339,19 +423,16 @@ void loop() {
   // }
 
   int x_read = analogRead(A5);
-  int setpoint = constrain(round(2047/1023.0 * x_read), 48, 1047);
+  int setpoint = constrain(round(2047/1023.0 * x_read), 48, 250);
 
-  // analogWrite(LED_BUILTIN, setpoint);
+  analogWrite(LED_BUILTIN, setpoint*255/250.0);
 
+  setpoints.motor1 = setpoint;
+  setpoints.motor2 = setpoint;
+  setpoints.motor3 = setpoint;
+  setpoints.motor4 = setpoint;
 
-  if (DSHOT_READY) {
-    DSHOT_READY = false;
-    writeDSHOTFrame(calcDSHOTFrame(50), dshot_frame[0]);
-    writeDSHOTFrame(calcDSHOTFrame(150), dshot_frame[1]);
-    writeDSHOTFrame(calcDSHOTFrame(300), dshot_frame[2]);
-    writeDSHOTFrame(calcDSHOTFrame(2000), dshot_frame[3]);
-    enable_dma_channels();
-  }
+  DSHOTWrite(&setpoints);
 
   // delay(1);
 
