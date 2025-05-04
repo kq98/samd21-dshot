@@ -4,6 +4,10 @@
 
 static int _writeResolution = 8;
 
+bool DMA_DISABLE = false;
+bool SEND_CMD = false;
+int CMD_REPEAT_CNT = 0;
+
 int counter[4] = {0, 0, 0, 0};
 
 uint8_t DSHOT600_HIGH = 60;
@@ -18,10 +22,10 @@ struct dmaDescriptor {
 };
 
 struct DSHOTFrames {
-  uint8_t motor1[16] __attribute__ ((aligned (16))) = {80,75,70,65,60,55,50,45,40,35,30,25,20,15,10,0};
-  uint8_t motor2[16] __attribute__ ((aligned (16))) = {80,75,70,65,60,55,50,45,40,35,30,25,20,15,10,0};
-  uint8_t motor3[16] __attribute__ ((aligned (16))) = {0,10,15,20,25,30,35,40,45,50,55,60,65,70,75,80};
-  uint8_t motor4[16] __attribute__ ((aligned (16))) = {0,10,15,20,25,30,35,40,45,50,55,60,65,70,75,80};
+  uint8_t motor1[17] __attribute__ ((aligned (16))) = {0}; //{80,75,70,65,60,55,50,45,40,35,30,25,20,15,10,0};
+  uint8_t motor2[17] __attribute__ ((aligned (16))) = {0}; //{80,75,70,65,60,55,50,45,40,35,30,25,20,15,10,0};
+  uint8_t motor3[17] __attribute__ ((aligned (16))) = {0}; //{0,10,15,20,25,30,35,40,45,50,55,60,65,70,75,80};
+  uint8_t motor4[17] __attribute__ ((aligned (16))) = {0}; //{0,10,15,20,25,30,35,40,45,50,55,60,65,70,75,80};
 };
 
 DSHOTFrames dshotFrames;
@@ -117,7 +121,27 @@ void DMAC_Handler() {
   // Must clear this flag! Otherwise the interrupt will be triggered over and over again.
   DMAC->CHINTFLAG.reg = DMAC_CHINTENCLR_MASK;
 
-  DMAC->CHCTRLA.reg |= DMAC_CHCTRLA_ENABLE;
+  // TCC0->CCB[0].reg = (uint32_t) 0x00;
+  // TCC0->CCB[1].reg = (uint32_t) 0x00;
+  // TCC0->CCB[2].reg = (uint32_t) 0x00;
+  // TCC0->CCB[3].reg = (uint32_t) 0x00;
+
+  if (SEND_CMD) {
+    if (CMD_REPEAT_CNT == 0) {
+      DMAC->CHCTRLA.reg &= ~DMAC_CHCTRLA_ENABLE;
+      SEND_CMD = false;
+    } else {
+      CMD_REPEAT_CNT--;
+      DMAC->CHCTRLA.reg |= DMAC_CHCTRLA_ENABLE;
+    }
+  } else {
+    DMAC->CHCTRLA.reg |= DMAC_CHCTRLA_ENABLE;
+  }
+
+  if (DMA_DISABLE) {
+    DMAC->CHCTRLA.reg &= ~DMAC_CHCTRLA_ENABLE;
+  }
+
 }
 
 void setupDMA() {
@@ -127,9 +151,9 @@ void setupDMA() {
                                   (0 << 11) | // DSTINC: Destination Address Increment Enable
                                   (1 << 12) | // STEPSEL=SRC: Step Selection
                                   (0 << 13);  // STEPSIZE=X1: Address Increment Step Size
-  dmaDescriptorArray[0].btcnt = 16; // beat count
+  dmaDescriptorArray[0].btcnt = 17; // beat count
   dmaDescriptorArray[0].dstaddr = (uint32_t) &(TCC0->CCB[0].reg);
-  dmaDescriptorArray[0].srcaddr = (uint32_t) &dshotFrames.motor1[16];
+  dmaDescriptorArray[0].srcaddr = (uint32_t) &dshotFrames.motor1[17];
   dmaDescriptorArray[0].descaddr = (uint32_t) &dmaDescriptorArray[1];
 
   dmaDescriptorArray[1].btctrl =  (1 << 0) |  // VALID: Descriptor Valid
@@ -138,9 +162,9 @@ void setupDMA() {
                                   (0 << 11) | // DSTINC: Destination Address Increment Enable
                                   (1 << 12) | // STEPSEL=SRC: Step Selection
                                   (0 << 13);  // STEPSIZE=X1: Address Increment Step Size
-  dmaDescriptorArray[1].btcnt = 16; // beat count
+  dmaDescriptorArray[1].btcnt = 17; // beat count
   dmaDescriptorArray[1].dstaddr = (uint32_t) &(TCC0->CCB[1].reg);
-  dmaDescriptorArray[1].srcaddr = (uint32_t) &dshotFrames.motor2[16];
+  dmaDescriptorArray[1].srcaddr = (uint32_t) &dshotFrames.motor2[17];
   dmaDescriptorArray[1].descaddr = (uint32_t) &dmaDescriptorArray[2];
 
   dmaDescriptorArray[2].btctrl =  (1 << 0) |  // VALID: Descriptor Valid
@@ -149,9 +173,9 @@ void setupDMA() {
                                   (0 << 11) | // DSTINC: Destination Address Increment Enable
                                   (1 << 12) | // STEPSEL=SRC: Step Selection
                                   (0 << 13);  // STEPSIZE=X1: Address Increment Step Size
-  dmaDescriptorArray[2].btcnt = 16; // beat count
+  dmaDescriptorArray[2].btcnt = 17; // beat count
   dmaDescriptorArray[2].dstaddr = (uint32_t) &(TCC0->CCB[2].reg);
-  dmaDescriptorArray[2].srcaddr = (uint32_t) &dshotFrames.motor3[16];
+  dmaDescriptorArray[2].srcaddr = (uint32_t) &dshotFrames.motor3[17];
   dmaDescriptorArray[2].descaddr = (uint32_t) &dmaDescriptorArray[3];
 
   dmaDescriptorArray[3].btctrl =  (1 << 0) |  // VALID: Descriptor Valid
@@ -160,9 +184,9 @@ void setupDMA() {
                                   (0 << 11) | // DSTINC: Destination Address Increment Enable
                                   (1 << 12) | // STEPSEL=SRC: Step Selection
                                   (0 << 13);  // STEPSIZE=X1: Address Increment Step Size
-  dmaDescriptorArray[3].btcnt = 16; // beat count
+  dmaDescriptorArray[3].btcnt = 17; // beat count
   dmaDescriptorArray[3].dstaddr = (uint32_t) &(TCC0->CCB[3].reg);
-  dmaDescriptorArray[3].srcaddr = (uint32_t) &dshotFrames.motor4[16];
+  dmaDescriptorArray[3].srcaddr = (uint32_t) &dshotFrames.motor4[17];
   dmaDescriptorArray[3].descaddr = (uint32_t) 0x00; // last of the 4 linked descriptors
 
   DMAC->BASEADDR.reg = (uint32_t)dmaDescriptorArray;
@@ -183,7 +207,61 @@ void setupDMA() {
 
 }
 
+uint16_t calcDSHOTFrame(uint16_t throttle) {
+  uint16_t value = 0;
+  uint16_t crc = 0;
+
+  if (throttle > 2047)
+    return 0xFFFF;
+  else {
+    value = throttle << 1; // Telemetry = 0
+    crc = (value ^ (value >> 4) ^ (value >> 8)) & 0x0F;
+    value = value << 4; // Shift thottle and telemetry into upper 12 bits to make space for crc
+    value = value | crc;
+
+    return value;
+  }
+}
+
+void writeDSHOTFrame(uint16_t value, uint8_t* target) {
+  for (int i = 0; i < 16; i++) {
+    if ( ((1 << i) & value) == (1 << i)) 
+      target[15-i] = DSHOT600_HIGH;
+    else
+      target[15-i] = DSHOT600_LOW;
+  }
+
+  target[16] = 0;
+}
+
+void sendCommand(uint8_t cmd, uint8_t *target, uint16_t delay_val = 0, uint8_t num_repeat = 0) {
+  DMAC->CHCTRLA.reg &= ~DMAC_CHCTRLA_ENABLE;
+  writeDSHOTFrame(calcDSHOTFrame(cmd), target);
+  CMD_REPEAT_CNT = num_repeat;
+  SEND_CMD = true;
+  DMAC->CHCTRLA.reg |= DMAC_CHCTRLA_ENABLE;
+
+  // delay(delay_val);
+}
+
+void arm_drone() {
+  TCC0->CCB[0].reg = (uint32_t) DSHOT600_LOW;
+  TCC0->CCB[1].reg = (uint32_t) DSHOT600_LOW;
+  TCC0->CCB[2].reg = (uint32_t) DSHOT600_LOW;
+  TCC0->CCB[3].reg = (uint32_t) DSHOT600_LOW;
+  delay(300);
+  TCC0->CCB[0].reg = (uint32_t) 0x00;
+  TCC0->CCB[1].reg = (uint32_t) 0x00;
+  TCC0->CCB[2].reg = (uint32_t) 0x00;
+  TCC0->CCB[3].reg = (uint32_t) 0x00;
+  delay(1);
+
+}
+
 void setup() {
+
+  // SerialUSB.begin(9600);
+  pinMode(LED_BUILTIN, OUTPUT);
 
   myAnalogWrite(4, 0, PORT_PMUX_PMUXE_E, 0); //PA08
   myAnalogWrite(3, 0, PORT_PMUX_PMUXO_F, 1); //PA09
@@ -191,41 +269,62 @@ void setup() {
   myAnalogWrite(7, 0, PORT_PMUX_PMUXO_F, 3); //PA21
 
   setupDMA();
+
+  delay(100);
+
+  sendCommand(20, dshotFrames.motor1, 0, 6);
+
+  delay(300);
+  arm_drone();
+
+  // sendCommand(200, dshotFrames.motor1, 1);
+  // sendCommand(200, dshotFrames.motor1, 1);
+  // sendCommand(200, dshotFrames.motor1, 1);
+
+  // writeDSHOTFrame(calcDSHOTFrame(100), dshotFrames.motor1);
+  // DMAC->CHCTRLA.reg |= DMAC_CHCTRLA_ENABLE;
+
+  // delay(500);
+
+  // // writeDSHOTFrame(calcDSHOTFrame(100), dshotFrames.motor1);
+  // // DMAC->CHCTRLA.reg |= DMAC_CHCTRLA_ENABLE;
+
+  // // delay(500);
+
+  // // writeDSHOTFrame(calcDSHOTFrame(48), dshotFrames.motor1);
+  // // DMAC->CHCTRLA.reg |= DMAC_CHCTRLA_ENABLE;
+
+  // DMA_DISABLE = false;
 }
 
 void loop() {
+  // while (Serial.available() > 0) {
 
-  //myAnalogWrite(4, counter[0], PORT_PMUX_PMUXE_E, 0); //PA08
-  // myAnalogWrite(3, counter[1], PORT_PMUX_PMUXO_F, 1); //PA09
-  // myAnalogWrite(6, counter[2], PORT_PMUX_PMUXE_F, 2); //PA20
-  // myAnalogWrite(7, counter[3], PORT_PMUX_PMUXO_F, 3); //PA21
-  // analogWrite(5,counter);
-  delay ( 10 );
-  if (counter[0] < 80) {
-    counter[0]++;
-  }
-  else 
-    counter[0] = 0;
+  //   // look for the next valid integer in the incoming serial stream:
+  //   int red = Serial.parseInt();
 
-  if (counter[1] < 80)
-    counter[1] += 10;
-  else 
-    counter[1] = 0;
+  //   // look for the newline. That's the end of your sentence:
+  //   if (Serial.read() == '\n') {
+  //     // constrain the values to 0 - 255 and invert
+  //     // if you're using a common-cathode LED, just use "constrain(color, 0, 255);"
+  //     red = constrain(red, 48, 2047);
 
-  if (counter[2] < 80)
-    counter[2] += 20;
-  else 
-    counter[2] = 0;
+  //     // fade the red, green, and blue legs of the LED:
+  //     writeDSHOTFrame(calcDSHOTFrame(red), dshotFrames.motor1);
+  //     DMAC->CHCTRLA.reg |= DMAC_CHCTRLA_ENABLE;
 
-  if (counter[3] < 80)
-    counter[3] += 50;
-  else 
-    counter[3] = 0;
+  //     // print the three numbers in one string as hexadecimal:
+  //     Serial.print(red, HEX);
 
-  for(int i = 0; i < 16; i++) {
-    dshotFrames.motor1[i] = counter[0];
-    dshotFrames.motor2[i] = counter[1];
-    dshotFrames.motor3[i] = counter[2];
-    dshotFrames.motor4[i] = counter[3];
-  }
+  //   }
+  // }
+
+  int x_read = analogRead(A5);
+  int setpoint = constrain(round(2047/1023.0 * x_read), 48, 1047);
+
+  analogWrite(LED_BUILTIN, setpoint);
+
+  writeDSHOTFrame(calcDSHOTFrame(setpoint), dshotFrames.motor1);
+  DMAC->CHCTRLA.reg |= DMAC_CHCTRLA_ENABLE;
+
 }
