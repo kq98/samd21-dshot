@@ -6,6 +6,7 @@
 
 static int _writeResolution = 8;
 
+bool DSHOT_READY = false;
 bool SEND_CMD = false;
 int CMD_REPEAT_CNT = 0;
 
@@ -157,9 +158,11 @@ void DMAC_Handler() {
       // TCC0->CCB[3].reg = (uint32_t) 0x00;
     } else {
       CMD_REPEAT_CNT--;
+      DSHOT_READY = true;
       enable_dma_channels();
     }
   } else {
+    DSHOT_READY = true;
     // TCC0->CCB[0].reg = (uint32_t) 0x00;
     // TCC0->CCB[1].reg = (uint32_t) 0x00;
     // TCC0->CCB[2].reg = (uint32_t) 0x00;
@@ -190,7 +193,7 @@ void setupDMA() {
   
   for (int i = 0; i < NUM_MOTOR; i++) {
     DMAC->CHID.reg = i; // select channel i
-    DMAC->CHCTRLB.reg = DMAC_CHCTRLB_LVL(0) | DMAC_CHCTRLB_TRIGSRC(TCC0_DMAC_ID_OVF) | DMAC_CHCTRLB_TRIGACT_BEAT;
+    DMAC->CHCTRLB.reg = DMAC_CHCTRLB_LVL(i) | DMAC_CHCTRLB_TRIGSRC(TCC0_DMAC_ID_OVF) | DMAC_CHCTRLB_TRIGACT_BEAT;
   }
 
   DMAC->CTRL.reg = DMAC_CTRL_DMAENABLE | DMAC_CTRL_LVLEN(0xf);
@@ -200,11 +203,11 @@ void setupDMA() {
   //   DMAC->CHINTENSET.reg = DMAC_CHINTENSET_TCMPL;
   // }
 
-  // DMAC->CHID.reg = 3;
-  // DMAC->CHINTENSET.reg = DMAC_CHINTENSET_TCMPL;
-  // NVIC_EnableIRQ(DMAC_IRQn);
+  DMAC->CHID.reg = 3;
+  DMAC->CHINTENSET.reg = DMAC_CHINTENSET_TCMPL;
+  NVIC_EnableIRQ(DMAC_IRQn);
 
-  // enable_dma_channels();
+  enable_dma_channels();
 
 }
 
@@ -273,7 +276,7 @@ void setup() {
 
   delay(100);
 
-  sendCommand(21, dshot_frame[0], 0, 6);
+  sendCommand(20, dshot_frame[0], 0, 6);
 
   delay(300);
   arm_drone();
@@ -328,17 +331,20 @@ void loop() {
   //   }
   // }
 
-  int x_read = analogRead(A5);
-  int setpoint = constrain(round(2047/1023.0 * x_read), 48, 1047);
+  // int x_read = analogRead(A5);
+  // int setpoint = constrain(round(2047/1023.0 * x_read), 48, 1047);
 
-  // analogWrite(LED_BUILTIN, setpoint);
+  // // analogWrite(LED_BUILTIN, setpoint);
 
 
-  writeDSHOTFrame(calcDSHOTFrame(setpoint), dshot_frame[0]);
-  writeDSHOTFrame(calcDSHOTFrame(setpoint), dshot_frame[1]);
-  writeDSHOTFrame(calcDSHOTFrame(setpoint), dshot_frame[2]);
-  writeDSHOTFrame(calcDSHOTFrame(setpoint), dshot_frame[3]);
-  enable_dma_channels();
+  // if (DSHOT_READY) {
+  //   DSHOT_READY = false;
+  //   writeDSHOTFrame(calcDSHOTFrame(setpoint), dshot_frame[0]);
+  //   writeDSHOTFrame(calcDSHOTFrame(setpoint), dshot_frame[1]);
+  //   writeDSHOTFrame(calcDSHOTFrame(setpoint), dshot_frame[2]);
+  //   writeDSHOTFrame(calcDSHOTFrame(setpoint), dshot_frame[3]);
+  //   enable_dma_channels();
+  // }
 
   // delay(1);
 
