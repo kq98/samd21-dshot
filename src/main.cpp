@@ -6,6 +6,21 @@ static int _writeResolution = 8;
 
 int counter[4] = {0, 0, 0, 0};
 
+int led = 1;
+
+struct dmaDescriptor {
+  uint16_t btctrl;
+  uint16_t btcnt;
+  uint32_t srcaddr;
+  uint32_t dstaddr;
+  uint32_t descaddr;
+};
+
+uint8_t motorDSHOT_Frame[16] __attribute__ ((aligned (16))) = {0,10,20,30,40,50,60,70,100,130,140,150,160,180,200,255}; 
+
+volatile dmaDescriptor dmaDescriptorArray[1] __attribute__ ((aligned (16)));
+dmaDescriptor dmaDescriptorWritebackArray[1] __attribute__ ((aligned (16)));
+
 // Wait for synchronization of registers between the clock domains
 static __inline__ void syncTC_16(Tc* TCx) __attribute__((always_inline, unused));
 static void syncTC_16(Tc* TCx) {
@@ -35,7 +50,7 @@ void myAnalogWrite(int pin, int value, uint8_t group, uint8_t channel) {
   uint32_t attr = pinDesc.ulPinAttribute;
 
 
-  value = mapResolution(value, _writeResolution, 16);
+  value = mapResolution(value, _writeResolution, 8);
 
   uint32_t tcNum = GetTCNumber(pinDesc.ulPWMChannel);
   static bool tcEnabled[TCC_INST_NUM+TC_INST_NUM];
@@ -76,39 +91,86 @@ void myAnalogWrite(int pin, int value, uint8_t group, uint8_t channel) {
     TCCx->CC[channel].reg = (uint32_t) value;
     syncTCC(TCCx);
     // Set PER to maximum counter value (resolution : 0xFFFF)
-    TCCx->PER.reg = 0xFFFF;
+    TCCx->PER.reg = 0x00FF;
     syncTCC(TCCx);
     // Enable TCCx
     TCCx->CTRLA.bit.ENABLE = 1;
     syncTCC(TCCx);
   } else {
       Tcc* TCCx = TCC0; //(Tcc*) GetTC(pinDesc.ulPWMChannel);
-      TCCx->CTRLBSET.bit.LUPD = 1;
-      syncTCC(TCCx);
+      // TCCx->CTRLBSET.bit.LUPD = 1;
+      // syncTCC(TCCx);
       TCCx->CCB[channel].reg = (uint32_t) value;
       syncTCC(TCCx);
-      TCCx->CTRLBCLR.bit.LUPD = 1;
-      syncTCC(TCCx);
+      // TCCx->CTRLBCLR.bit.LUPD = 1;
+      // syncTCC(TCCx);
   }
 }
 
+void DMAC_Handler() {
+  // Must clear this flag! Otherwise the interrupt will be triggered over and over again.
+  DMAC->CHINTFLAG.reg = DMAC_CHINTENCLR_MASK;
+
+  digitalWrite(LED_BUILTIN, led);
+
+  DMAC->CHCTRLA.reg |= DMAC_CHCTRLA_ENABLE;
+
+  if (led == 0)
+    led = 1;
+  else
+    led = 0;
+}
+
+void setupDMA() {
+  dmaDescriptorArray[0].btctrl =  (1 << 0) |  // VALID: Descriptor Valid
+                                  (0 << 3) |  // BLOCKACT=NOACT: Block Action
+                                  (1 << 10) | // SRCINC: Source Address Increment Enable
+                                  (0 << 11) | // DSTINC: Destination Address Increment Enable
+                                  (1 << 12) | // STEPSEL=SRC: Step Selection
+                                  (0 << 13);  // STEPSIZE=X1: Address Increment Step Size
+  dmaDescriptorArray[0].btcnt = 16; // beat count
+  dmaDescriptorArray[0].dstaddr = (uint32_t) &(TCC0->CCB[0].reg);
+  dmaDescriptorArray[0].srcaddr = (uint32_t) &motorDSHOT_Frame[16];
+
+  DMAC->BASEADDR.reg = (uint32_t)dmaDescriptorArray;
+  DMAC->WRBADDR.reg = (uint32_t)dmaDescriptorWritebackArray;
+
+  PM->AHBMASK.bit.DMAC_ = 1;
+  PM->APBBMASK.bit.DMAC_ = 1;
+  DMAC->CTRL.reg = DMAC_CTRL_DMAENABLE | DMAC_CTRL_LVLEN(0xf);
+  
+
+  DMAC->CHID.reg = 0; // select channel 0
+  DMAC->CHCTRLB.reg = DMAC_CHCTRLB_LVL(0) | DMAC_CHCTRLB_TRIGSRC(TCC0_DMAC_ID_OVF) | DMAC_CHCTRLB_TRIGACT_BEAT;
+
+  DMAC->CHINTENSET.reg = DMAC_CHINTENSET_TCMPL;
+  NVIC_EnableIRQ(DMAC_IRQn);
+
+  DMAC->CHCTRLA.reg |= DMAC_CHCTRLA_ENABLE;
+
+}
+
 void setup() {
-  // myAnalogWrite(4, 128, PORT_PMUX_PMUXO_E, 0);
-  // myAnalogWrite(5, 128, PORT_PMUX_PMUXO_F, 1);
-  // myAnalogWrite(6, 128, PORT_PMUX_PMUXO_F, 2);
-  // myAnalogWrite(7, 128, PORT_PMUX_PMUXO_F, 3);
+
+  myAnalogWrite(4, 255, PORT_PMUX_PMUXE_E, 0); //PA08
+  setupDMA();
+  pinMode(LED_BUILTIN, OUTPUT);
 }
 
 void loop() {
 
-  myAnalogWrite(4, counter[0], PORT_PMUX_PMUXE_E, 0); //PA08
+  //myAnalogWrite(4, counter[0], PORT_PMUX_PMUXE_E, 0); //PA08
   myAnalogWrite(3, counter[1], PORT_PMUX_PMUXO_F, 1); //PA09
   myAnalogWrite(6, counter[2], PORT_PMUX_PMUXE_F, 2); //PA20
   myAnalogWrite(7, counter[3], PORT_PMUX_PMUXO_F, 3); //PA21
   // analogWrite(5,counter);
   delay ( 10 );
-  if (counter[0] < 255)
+  if (counter[0] < 255) {
     counter[0]++;
+    for(int i = 0; i < 16; i++) {
+      motorDSHOT_Frame[i] = counter[0];
+    }
+  }
   else 
     counter[0] = 0;
 
