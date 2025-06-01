@@ -1,12 +1,12 @@
 {
     "name": "SAMD21 DSHOT",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "description": "A library to allow samd21 based arduino boards to control up to 4 ESCs and their BLDC motors for quadrocopter flight",
     "keywords": "drone, dshot, samd21, quadrocopter, arduino",
     "repository":
     {
       "type": "git",
-      "url": "https://github.com/username/hello-world.git"
+      "url": "https://github.com/kq98/samd21-dshot.git"
     },
     "authors":
     [
