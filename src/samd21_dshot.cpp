@@ -1,14 +1,14 @@
 
 #include "samd21_dshot.h"
 
+bool DSHOT_READY = false;
+bool DSHOT_SEND_CMD = false;
+int DSHOT_CMD_REPEAT_CNT = 0;
+
 namespace DSHOT {
 namespace detail {
 
 static int _writeResolution = 8;
-
-bool DSHOT_READY = false;
-bool DSHOT_SEND_CMD = false;
-int DSHOT_CMD_REPEAT_CNT = 0;
 
 /*
   Based on: https://betaflight.com/docs/development/api/dshot
@@ -192,23 +192,6 @@ void disable_dma_channels() {
   DMAC->CHCTRLA.reg &= ~DMAC_CHCTRLA_ENABLE;
 }
 
-void DMAC_Handler() {
-  // Must clear this flag! Otherwise the interrupt will be triggered over and over again.
-  DMAC->CHINTFLAG.reg = DMAC_CHINTENCLR_MASK;
-
-  if (DSHOT_SEND_CMD) {
-    if (DSHOT_CMD_REPEAT_CNT == 0) {
-      DSHOT_SEND_CMD = false;
-    } else {
-      DSHOT_CMD_REPEAT_CNT--;
-      DSHOT_READY = true;
-      enable_dma_channels();
-    }
-  } else {
-    DSHOT_READY = true;
-  }
-}
-
 void setupTCC() {
   DSHOTAnalogWrite(4, 0, PORT_PMUX_PMUXE_E, 0); //PA08
   DSHOTAnalogWrite(3, 0, PORT_PMUX_PMUXO_F, 1); //PA09
@@ -353,4 +336,21 @@ int Init(MODE DSHOT_MODE) {
   return 0;
 }
 
+}
+
+void DMAC_Handler() {
+  // Must clear this flag! Otherwise the interrupt will be triggered over and over again.
+  DMAC->CHINTFLAG.reg = DMAC_CHINTENCLR_MASK;
+
+  if (DSHOT_SEND_CMD) {
+    if (DSHOT_CMD_REPEAT_CNT == 0) {
+      DSHOT_SEND_CMD = false;
+    } else {
+      DSHOT_CMD_REPEAT_CNT--;
+      DSHOT_READY = true;
+      DSHOT::enable_dma_channels();
+    }
+  } else {
+    DSHOT_READY = true;
+  }
 }

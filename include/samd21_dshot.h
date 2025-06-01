@@ -41,7 +41,6 @@ void DSHOTAnalogWrite(int pin, int value, uint8_t group, uint8_t channel);
 void enable_dma_channels();
 void disable_dma_channels();
 
-void DMAC_Handler();
 void setupTCC();
 void setupDMA();
 
